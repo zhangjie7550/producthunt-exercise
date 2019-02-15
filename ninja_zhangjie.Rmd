@@ -1,0 +1,157 @@
+---
+title: "Ninja_lv1"
+author: "Zhangjie"
+date: "2019/2/15"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set( echo = FALSE, warning = FALSE, cache = TRUE)
+library(tidyverse)
+library(ggthemes)
+library(lubridate)
+library(RColorBrewer)
+
+#set theme
+old_theme <- theme_get()
+new_theme <- theme_set(theme_tufte() + theme(text = element_text(family = "Noto Sans CJK SC")))
+                                             
+
+#read data
+topics <- as_tibble(read.csv("Data/AllTopics.csv"))
+
+posts <- as_tibble(read.csv("Data/PostsForAnalysis.csv"))
+
+users <- as_tibble(read.csv("Data/UsersForAnalysis.csv"))
+
+posts_topics <- as_tibble(read.csv("Data/PostsTopicsForAnalysis.csv"))
+
+
+```
+
+## 1 针对主题的探索
+
+ 1.1 发布数量前20大帖子主题的发帖数量和追随人数没有明显的关联性 
+
+
+```{r q1-1}
+#copy of answer
+topics %>% 
+  arrange(desc(num_posts)) %>% 
+  mutate(rank = row_number()) %>% 
+  filter(rank <= 20) %>% 
+  ggplot() +
+  geom_bar(aes(x = reorder(name, -num_posts), 
+               y = num_posts), 
+           stat = "identity",
+           fill = "#BAE4BC",
+           width = 0.2) +
+  geom_point(aes(x = name, y = num_posts, size = num_followers),
+             color = "#0868AC") +
+  labs(x = "Topic", y = "# Posts")+
+  theme(axis.text.x=element_text(angle = 45))
+```
+
+<br>
+
+1.2 然而发布数量前20大帖子的发帖量明显为异常值
+
+```{r q1-2}
+#boxplot
+topics %>% 
+  ggplot(aes(y = num_posts)) +
+  geom_boxplot()
+
+```
+
+<br>
+
+剔除5%异常值后发现，发帖数量和追随人数有一定正相关关系
+
+```{r q1-3}
+
+#geom_point
+topics %>% 
+  filter(num_posts < quantile(topics$num_posts, probs = .95, na.rm = TRUE)) %>% 
+  ggplot(aes(x = num_posts, y = num_followers)) +
+  geom_point()
+
+```
+
+<br>
+
+## 2 针对帖子发布时间的探索
+
+2. 早、晚两个时间段发布的帖子明显积累更多的票数
+
+
+```{r q2}
+
+#geom_point
+posts %>% 
+  mutate(year = as.factor(year(date))) %>% 
+  group_by(year, time_of_day) %>% 
+  summarise(votes = sum(votes_count, na.rm = TRUE)) %>% 
+  ggplot(aes(x = year, y = votes, fill = time_of_day)) +
+  geom_bar(stat = "identity",
+           position = "dodge",
+           width = .3) 
+
+```
+
+<br>
+
+## 3 搜索科技产品触觉达人
+
+3. 前20名发布者数, 结果有误
+
+```{r q3}
+#Questoin 3
+
+posts_votes <- posts %>% 
+  group_by(user_id) %>% 
+  summarise(user_votes = sum(votes_count),
+            user_posts = n())
+
+
+
+user_votes <- users %>% 
+  filter(posts_count > 30) %>% 
+  left_join(posts_votes, by = "user_id") %>% 
+  mutate(mean_votes = as.double(user_votes) / user_posts) %>% 
+  arrange(desc(mean_votes)) %>% 
+  mutate(rank = row_number()) %>% 
+  filter(rank <= 20) %>% 
+  select(name, mean_votes)
+
+user_votes 
+```
+
+<br>
+
+
+## 4 哪些主题更受用户青睐
+
+4. 前10大主题
+
+```{r q4}
+#question4
+posts_topics_gather <- posts_topics %>% 
+  gather(-id, key = 'Topic', value = 'tag', na.rm = TRUE) %>% 
+  rename(post_id = id) %>% 
+  select(post_id, Topic) %>% 
+  filter(Topic != "tech") %>% 
+  group_by(Topic) %>% 
+  summarise(count = n()) %>% 
+  arrange(desc(count)) %>% 
+  mutate(rank = row_number()) %>% 
+  filter(rank <= 10)
+
+posts_topics_gather %>% 
+  ggplot(aes(x = reorder(Topic, -count),  
+             y = count, fill = Topic)) +
+  geom_bar(stat = "identity",
+           width = .3) +
+  labs(x = "Topic", y = "Count")+
+  theme(axis.text.x=element_text(angle = 45))
+```
